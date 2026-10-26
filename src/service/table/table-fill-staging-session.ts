@@ -1,3 +1,4 @@
+import { enforceOriginalGuideWrite_ACU } from './original-guide-fill-strategy';
 import type { SqlTableApplyScope_ACU } from '../../shared/table-storage-provider';
 import type { TableDataObject_ACU } from '../../shared/models/table-data';
 import { logDebug_ACU, logWarn_ACU } from '../../shared/utils';
@@ -89,9 +90,12 @@ export function createTableFillStagingSession_ACU(
       const mergeOverlay = (data: Record<string, any>) => {
         const stale = assertScope('mergeOverlay');
         if (stale?.ok === false) throw new Error(stale.error);
+        const policyError = enforceOriginalGuideWrite_ACU(policyBase as any, data as any);
+        if (policyError) throw Object.assign(new Error(policyError), { originalGuideModelError: true });
         return mergeTargetOverlayFromBucket_ACU(run.overlay, data, input.saveTargetIndex ?? null, input.logicalTarget);
       };
       const workingView = assembleBucketWorkingView_ACU(input.historicalBase, run.overlay);
+      const policyBase = JSON.parse(JSON.stringify(workingView));
       try {
         if (input.appliedTableData && typeof input.appliedTableData === 'object') {
           run.overlay = mergeOverlay(input.appliedTableData);
@@ -170,7 +174,7 @@ export function createTableFillStagingSession_ACU(
         return {
           ok: false,
           error: error?.message || String(error),
-          errorCategory: 'infrastructure',
+          errorCategory: error?.originalGuideModelError ? 'model' : 'infrastructure',
         };
       }
     },

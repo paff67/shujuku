@@ -48,3 +48,6 @@ backups/pr8-review/
 
 # 本地导入的世界书/角色数据
 /_WNE-Core (1).json
+# Generated personal card content is a local deliverable, never repository source.
+/integrations/original-guide/live-current-script-native-llm.js
+/integrations/original-guide/live-current-script-native-llm.js.manifest.json

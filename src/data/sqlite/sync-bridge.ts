@@ -35,6 +35,7 @@ const META_TABLE_DDL = `CREATE TABLE IF NOT EXISTS ${META_TABLE_NAME} (
 
 /** meta 表历史版本没有 physical_table_name 列；老库加载时补列，失败降级不阻断。 */
 const META_TABLE_MIGRATIONS_ACU: ReadonlyArray<{ column: string; ddl: string }> = [
+  { column: 'original_guide_json', ddl: 'ALTER TABLE _acu_sheet_meta ADD COLUMN original_guide_json TEXT;' },
   { column: 'physical_table_name', ddl: `ALTER TABLE ${META_TABLE_NAME} ADD COLUMN physical_table_name TEXT;` },
 ];
 
@@ -287,7 +288,7 @@ export class SyncBridge {
       throw new Error(resolvedDDL.diagnostics[0]);
     }
 
-    const metaSql = `INSERT OR REPLACE INTO ${META_TABLE_NAME} (sheet_key, uid, name, order_no, source_data_json, update_config_json, export_config_json, physical_table_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`;
+    const metaSql = `INSERT OR REPLACE INTO ${META_TABLE_NAME} (sheet_key, uid, name, order_no, source_data_json, update_config_json, export_config_json, physical_table_name, original_guide_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`;
     const executeResolvedDDL = (candidate: typeof resolvedDDL) => {
       // SQLite 的 row_id PRIMARY KEY 无法表示历史重复身份。SPv7.9 迁移只在内存中
       // 暂时移除这一唯一约束，让旧 SQL 仍按旧 row_id 值作用；导出后立即统一重编号。
@@ -314,6 +315,7 @@ export class SyncBridge {
             JSON.stringify(sheet.updateConfig || {}),
             JSON.stringify(sheet.exportConfig || {}),
             tableName,
+            (sheet as any).originalGuide === undefined ? null : JSON.stringify((sheet as any).originalGuide),
           ],
         ],
       );
@@ -387,6 +389,7 @@ export class SyncBridge {
       uid: meta.uid,
       name: meta.name,
       sourceData: meta.sourceData,
+      ...(meta.originalGuide === undefined ? {} : { originalGuide: meta.originalGuide }),
       content,
       updateConfig: meta.updateConfig,
       exportConfig: meta.exportConfig,
@@ -414,12 +417,19 @@ export class SyncBridge {
       for (const row of result.values) {
         const sheetKey = String(at(row, 'sheet_key'));
         const storedPhysical = at(row, 'physical_table_name');
+        let originalGuide: unknown;
+        try {
+          originalGuide = at(row, 'original_guide_json') == null ? undefined : JSON.parse(String(at(row, 'original_guide_json')));
+        } catch {
+          throw Object.assign(new Error('[SyncBridge] 原著来源元数据损坏，已拒绝导出。'), { code: 'original_guide_metadata_corrupt' });
+        }
         map.set(sheetKey, {
           sheetKey,
           uid: String(at(row, 'uid')),
           name: String(at(row, 'name')),
           orderNo: Number(at(row, 'order_no')) || 0,
           sourceData: safeJsonParse(at(row, 'source_data_json')),
+          originalGuide,
           updateConfig: safeJsonParse(at(row, 'update_config_json')),
           exportConfig: safeJsonParse(at(row, 'export_config_json')),
           physicalTableName: storedPhysical != null && String(storedPhysical).trim()
@@ -428,7 +438,7 @@ export class SyncBridge {
         });
       }
     } catch (error) {
-      if (strict) throw error;
+      if (strict || (error as any)?.code === 'original_guide_metadata_corrupt') throw error;
       // 元数据表不存在时返回空 map
     }
     return map;
@@ -489,6 +499,7 @@ export class SyncBridge {
 
 /** 元数据结构 */
 interface SheetMeta {
+  originalGuide?: unknown;
   sheetKey: string;
   uid: string;
   name: string;

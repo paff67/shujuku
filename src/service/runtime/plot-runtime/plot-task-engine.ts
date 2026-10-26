@@ -268,6 +268,7 @@ import { hasUsableWorldbookSkillMeta_ACU, resolveAgentWorldbookFilterAvailabilit
     };
 
     const isUniqueCurrentTableName = (tableName: string, tableData: Record<string, any>) => {
+      if (requestContext?.controlledSource) return false;
       const normalizedTableName = String(tableName || '').trim();
       if (!normalizedTableName || !tableData || typeof tableData !== 'object') return false;
       return Object.values(tableData).filter((table: any) => (
@@ -367,7 +368,7 @@ import { hasUsableWorldbookSkillMeta_ACU, resolveAgentWorldbookFilterAvailabilit
 
     let userInfoContent_Plot = '';
     try {
-      userInfoContent_Plot = getPersonaDescription_ACU();
+      userInfoContent_Plot = requestContext?.controlledSource ? '' : getPersonaDescription_ACU();
       logDebug_ACU(`[剧情推进] $U (persona_description) 获取结果: ${userInfoContent_Plot ? '成功' : '为空'}`);
     } catch (e) {
       logWarn_ACU('[剧情推进] 获取用户设定描述时出错:', e);
@@ -376,7 +377,7 @@ import { hasUsableWorldbookSkillMeta_ACU, resolveAgentWorldbookFilterAvailabilit
 
     let charInfoContent_Plot = '';
     try {
-      charInfoContent_Plot = getCharDescription_ACU();
+      charInfoContent_Plot = requestContext?.controlledSource ? String(requestContext.ejsContext.originalGuideText || '') : getCharDescription_ACU();
       logDebug_ACU(`[剧情推进] $C (char_description) 获取结果: ${charInfoContent_Plot ? '成功，长度=' + charInfoContent_Plot.length : '为空'}`);
     } catch (e) {
       logWarn_ACU('[剧情推进] 获取角色描述时出错:', e);
@@ -598,7 +599,7 @@ import { hasUsableWorldbookSkillMeta_ACU, resolveAgentWorldbookFilterAvailabilit
         readContext: sharedContext.worldbookReadContext,
         history: sharedContext.requestContext?.history,
       } as const;
-      const worldbookReads = await Promise.allSettled([
+      const worldbookReads = await Promise.allSettled(requestContext?.controlledSource ? [Promise.resolve(''), Promise.resolve('')] : [
         getWorldbookContentForPlot_ACU(sharedContext.plotSettings, sharedContext.userMessage, worldbookTriggerText, taskWorldbookOptions),
         needsDatabaseExcludedWorldbook
           ? getWorldbookContentForPlot_ACU(sharedContext.plotSettings, sharedContext.userMessage, worldbookTriggerText, {
@@ -886,7 +887,7 @@ import { hasUsableWorldbookSkillMeta_ACU, resolveAgentWorldbookFilterAvailabilit
       sharedContext.reportWarning = reportWarning;
     checkCurrent();
 
-    const agentAvailability = await resolveAgentWorldbookFilterAvailability_ACU(worldbookReadContext);
+    const agentAvailability = requestContext?.controlledSource ? { available: false as const } : await resolveAgentWorldbookFilterAvailability_ACU(worldbookReadContext);
     const agentWorldbookControl = agentAvailability.available ? agentAvailability.control : null;
     if (requestContext && agentWorldbookControl && 'bookNames' in agentAvailability) {
       const read = await getLorebookEntriesStrict_ACU(agentAvailability.bookNames, {

@@ -3,6 +3,8 @@ import type { SqlTemplateReadContext_ACU } from '../template-vars/sql-query-var'
 
 /** 完整的请求级隔离边界；存在时不读取或保存宿主物理回合。 */
 export interface PlotRequestContext_ACU {
+  /** A controlled source supplies all facts; never consult live worldbooks/persona/character. */
+  readonly controlledSource?: boolean;
   readonly history: readonly Record<string, any>[];
   readonly tableData: TableDataObject_ACU;
   readonly presetName: string;

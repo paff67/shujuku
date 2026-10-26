@@ -1,3 +1,5 @@
+import { installOriginalGuideGeneration_ACU } from './original-guide-generation';
+import { originalGuideOwnsGeneration_ACU } from '../../memory/generation-owner';
 // init.ts — 初始化编排（presentation 层：负责事件绑定、UI 初始化、模块串联）
 // 从 05_core_tail.js 迁入
 
@@ -200,6 +202,7 @@ export   function mainInitialize_ACU() {
         // [调试] 检查可用的事件类型
         logDebug_ACU('[提示词模板] 可用的事件类型:', Object.keys(SillyTavern_API_ACU.eventTypes));
         installZeroLayerBootstrap_ACU();
+        installOriginalGuideGeneration_ACU();
         // [提示词模板] 监听 CHAT_COMPLETION_SETTINGS_READY 事件，使用 makeLast 确保在 st-prompt-template 之后执行
         if (SillyTavern_API_ACU.eventTypes.CHAT_COMPLETION_SETTINGS_READY) {
           // 检查是否有 makeLast 方法
@@ -292,6 +295,8 @@ export   function mainInitialize_ACU() {
                 if (isQuietLikeGeneration_ACU('tavernhelper', { quiet_prompt: options.quiet_prompt }) || options.automatic_trigger) {
                   return (window as any).original_TavernHelper_generate_ACU.apply(this, args);
                 }
+
+                if (originalGuideOwnsGeneration_ACU()) return (window as any).original_TavernHelper_generate_ACU.apply(this, args);
 
                 // 零层聊天的正文只经输入分流或 submitZeroLayerInput；不先做普通规划/召回再被请求门禁拒绝。
                 try {
@@ -882,6 +887,7 @@ export   function mainInitialize_ACU() {
             debug?.step('after_commands', { seq: generationContext?.seq,
               quietLike: isQuietLikeGeneration_ACU(type, params), dryRun: Boolean(dryRun), automatic: Boolean(params?.automatic_trigger) });
             // 内部生成继续自己的请求；普通用户发送不能借忙碌早退绕过规划。
+            if (originalGuideOwnsGeneration_ACU()) return;
             if (dryRun || type === 'regenerate' || params?._qrf_processed_by_hook) {
               debug?.step('plot_skip', { reason: params?._qrf_processed_by_hook ? 'already_processed' : 'event_filtered' });
               return;

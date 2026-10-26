@@ -78,6 +78,21 @@ describe('SyncBridge', () => {
   // loadFromTableData
   // ═══════════════════════════════════════════════════════════════
   describe('loadFromTableData', () => {
+    it('原著来源、稳定节点和幂等回执经真实 SQLite 重载完整保留', async () => {
+      const originalGuide = { version: 2, scope: { account: 'a', bookId: 'b', chatId: 'c' },
+        lineage: 'derived', rowNodeIds: { '1': 'node-a' }, reservedRowIds: ['1', '9'],
+        requests: { fill: { fingerprint: 'hash', recordIds: ['record-1'] } } };
+      const data = makeTableData({ sheet_0: { ...makeSheet(), originalGuide } as any });
+      bridge.loadFromTableData(data, { strict: true });
+      const exported = bridge.exportToTableData(data.mate, { strict: true });
+      expect((exported.sheet_0 as any).originalGuide).toEqual(originalGuide);
+      engine.dispose(); engine = new SqliteEngine(); await engine.init(); bridge = new SyncBridge(engine);
+      bridge.loadFromTableData(exported, { strict: true });
+      expect((bridge.exportToTableData(data.mate, { strict: true }).sheet_0 as any).originalGuide).toEqual(originalGuide);
+      engine.run("UPDATE _acu_sheet_meta SET original_guide_json = '{broken' WHERE sheet_key = 'sheet_0'");
+      expect(() => bridge.exportToTableData(data.mate, { strict: true })).toThrow();
+      expect(() => bridge.exportToTableData(data.mate)).toThrow(/元数据损坏/);
+    });
     it('加载单张表到 SQLite', () => {
       const data = makeTableData({ sheet_0: makeSheet() });
       const tableName = getRuntimeTableName(data, 'sheet_0');

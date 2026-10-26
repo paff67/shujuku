@@ -1,3 +1,4 @@
+import { extractNativeRecallCodes_ACU } from '../worldbook-context';
 /**
  * service/continuation/agent/agent-placeholder-resolver.ts — 读写集占位符解析
  *
@@ -153,10 +154,7 @@ export function extractAgentRecallCodesFromChat_ACU(chat: readonly any[]): strin
   for (let index = list.length - 1; index >= 0; index -= 1) {
     const message = list[index];
     if (!message || !message.is_user) continue;
-    const matches = String(message.mes ?? '').match(/AM\d+/gi) ?? [];
-    return [...new Set(matches
-      .map(code => normalizeAmCode_ACU(code))
-      .filter((code): code is string => code !== null))];
+    return extractNativeRecallCodes_ACU(String(message.mes ?? ''));
   }
   return [];
 }

@@ -13,13 +13,7 @@ export interface ContinuationWorldbookAdapterDependencies_ACU {
   logReadFailure: (phase: 'background' | 'history') => void;
 }
 
-const AM_CODE_PATTERN_ACU = /^AM\d+$/i;
-
-/** 归一化 AM 码（纪要地址码）；非法返回 null。同时供 Agent 世界书读取工具使用。 */
-export function normalizeAmCode_ACU(value: unknown): string | null {
-  const code = String(value ?? '').trim().toUpperCase();
-  return AM_CODE_PATTERN_ACU.test(code) ? code : null;
-}
+export { normalizeAmCode_ACU, extractNativeRecallCodes_ACU } from '../../shared/native-recall-codes';
 
 /** 去掉隔离前缀后的条目显示名。 */
 export function normalizeGeneratedComment_ACU(entry: Record<string, unknown>, isolationPrefix: string): string {

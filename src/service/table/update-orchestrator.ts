@@ -1,3 +1,4 @@
+import { originalGuideSheetKey_ACU } from './original-guide-fill-strategy';
 /**
  * service/table/update-orchestrator.ts — 表格更新编排（service 层：纯业务逻辑）
  * 从 presentation/triggers/update-process.ts 提取。
@@ -272,6 +273,7 @@ export async function runSummaryVectorFollowupAfterTableFill_ACU(options: {
     targetMessageIndex?: number;
     reason: string;
 }): Promise<void> {
+    if (originalGuideSheetKey_ACU(options.tableData)) return;
     if (options.reason === 'manual_refill_complete') {
         const worldbook = getCurrentWorldbookConfig_ACU();
         if (worldbook.summaryVectorIndexModeEnabled !== true) return;
@@ -1334,6 +1336,10 @@ export async function collectGroupFillResponse_ACU(
         assertCurrent?: () => void;
     } = {}
 ): Promise<GroupFillResponse_ACU> {
+    const guideKey = originalGuideSheetKey_ACU(currentJsonTableData_ACU);
+    if (guideKey && (job.targetSheetKeys?.length !== 1 || job.targetSheetKeys[0] !== guideKey)) {
+        return { job, success: false, attempt: 0, error: '原著填写只能以绑定纪要表为目标', errorCategory: 'precondition' };
+    }
     const effectiveAbortController = abortController || new AbortController();
     const isStopped = () => effectiveAbortController.signal.aborted || (options.respectGlobalStop !== false && wasStoppedByUser_ACU);
     const maxRetries = options.maxRetriesOverride || settings_ACU.tableMaxRetries || 3;
@@ -2395,6 +2401,8 @@ async function processGroupedRuntimeChunkCore_ACU(
         performanceParentSpanId?: string;
     } = {}
 ): Promise<{ success: boolean; failedGroups: string[]; error?: string; aborted?: boolean; committedBucketCount: number; diagnosticCode?: ManualUpdateResult['diagnosticCode']; postCommitWarnings?: TableUpdatePostCommitWarning_ACU[] }> {
+    const guideKey = originalGuideSheetKey_ACU(currentJsonTableData_ACU);
+    if (guideKey) groups = groups.filter(group => group.sheetKeys.includes(guideKey)).map(group => ({ ...group, sheetKeys: [guideKey] }));
     if (!Array.isArray(groups) || groups.length === 0) {
         return { success: true, failedGroups: [], committedBucketCount: 0 };
     }
@@ -3248,6 +3256,11 @@ export async function executeCardUpdateCore_ACU(
 
     try {
         // 本轮与重试共用启动正文；后续插件改写只影响宿主正文，不改变已取得的输入。
+        const guideKey = originalGuideSheetKey_ACU(currentJsonTableData_ACU);
+        if (guideKey) {
+            if (targetSheetKeys && !targetSheetKeys.includes(guideKey)) return { success: false, modifiedKeys: [], error: '原著填写目标不包含绑定纪要表', errorCategory: 'precondition' };
+            targetSheetKeys = [guideKey];
+        }
         messagesToUse = capturePromptMessageSnapshot_ACU(messagesToUse);
         const targetSnapshot = isImportMode ? undefined
             : admissionContext?.targetSnapshot ?? captureAiMessageSnapshot_ACU(getChatArray_ACU(), saveTargetIndex);
@@ -3350,6 +3363,7 @@ export async function executeCardUpdateCore_ACU(
                     const commitResult = await runTableUpdateCommit_ACU<CardUpdateResult>({
                         source: 'group_fill',
                         reason: 'executeCardUpdateCore',
+                        originalGuideStrategy: requestOptions?.originalGuideStrategy,
                         ...requestGuard,
                         chatKey: executionScope.chatKey,
                         isolationKey: executionScope.isolationKey,
@@ -3505,6 +3519,7 @@ export async function executeCardUpdateCore_ACU(
                 const updateOutcome = await runTableUpdateCommit_ACU<CardUpdateResult>({
                     source: 'group_fill',
                     reason: 'executeCardUpdateCore:snapshot',
+                    originalGuideStrategy: requestOptions?.originalGuideStrategy,
                     ...requestGuard,
                     chatKey: executionScope.chatKey,
                     isolationKey: executionScope.isolationKey,

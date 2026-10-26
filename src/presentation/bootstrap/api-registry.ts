@@ -22,6 +22,7 @@ import { createPerformanceDiagnosticsApi } from './api-groups/performance-diagno
 import { createZeroLayerExitApi_ACU } from './api-groups/zero-layer-api';
 import { createFeatureRuntimeApi_ACU } from './api-groups/feature-runtime-api';
 import { createDeskPetAppearanceApi_ACU } from './api-groups/desk-pet-appearance-api';
+import { createMemoryApi } from './api-groups/memory-api';
 
 // --- 共享状态（回调数组） ---
 const tableUpdateCallbacks: Function[] = [];
@@ -55,6 +56,7 @@ const api = Object.assign(
     createZeroLayerExitApi_ACU(),
     createFeatureRuntimeApi_ACU(),
     createDeskPetAppearanceApi_ACU(),
+    createMemoryApi(ctx),
     sqlApi,
 );
 

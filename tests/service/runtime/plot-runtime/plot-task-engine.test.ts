@@ -2385,6 +2385,17 @@ describe('runPlotTasksRuntime_ACU', () => {
     ))).toBe(false);
     expect(mockCallApiWithPlotPreset).toHaveBeenCalledTimes(1);
   });
+  it('受控原著来源使用请求级候选，不访问实时世界书、Agent 或人物资料', async () => {
+    const callApi = vi.fn(async () => '<recall>AM0001</recall>');
+    const context = { controlledSource: true, history: [], tableData: { sheet_0: { name: '纪要表', content: [['row_id', '内容'], ['7', 'frozen fact']] } }, presetName: '', signal: new AbortController().signal,
+      sqlReadContext: null, ejsContext: { originalGuideText: 'frozen cutoff' }, finalPromptEntries: [], assertCurrent: vi.fn(), resolveTaskApiPreset: () => '', callApi };
+    await runPlotTasksRuntime_ACU({ tasks: [{ id: 'controlled', stage: 1, order: 1, maxRetries: 1, promptGroup: [{ role: 'user', content: '{{纪要表}} $1 $U $C $5' }] }] }, 'current input', { requestContext: context });
+    expect(callApi).toHaveBeenCalledOnce();
+    expect(mockGetLorebookEntriesStrict).not.toHaveBeenCalled();
+    expect(mockResolveAgentWorldbookFilterAvailability).not.toHaveBeenCalled();
+    expect(mockGetPersonaDescription).not.toHaveBeenCalled(); expect(mockGetCharDescription).not.toHaveBeenCalled();
+    expect(mockCollectCombinedWorldbookEntriesByStrategy).not.toHaveBeenCalled();
+  });
   it.each([
     { isolated: false, acceptedTag: 'plot' },
     { isolated: true, acceptedTag: 'plot' },

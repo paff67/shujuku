@@ -1,3 +1,4 @@
+import { enforceOriginalGuideWrite_ACU, originalGuideSheetKey_ACU, type OriginalGuideWriteStrategy_ACU } from './original-guide-fill-strategy';
 import type { TableDataObject_ACU } from '../../shared/models/table-data';
 import { assertTableFillRequestCurrent_ACU, type TableFillRequestGuard_ACU } from './table-fill-request-guard';
 import { TableFillTargetStaleError_ACU } from '../../data/gateways/chat-message-snapshot';
@@ -56,6 +57,7 @@ export interface TableUpdateCommitApplyResult_ACU<T> {
 }
 
 export interface RunTableUpdateCommitOptions_ACU extends TableFillRequestGuard_ACU {
+  originalGuideStrategy?: OriginalGuideWriteStrategy_ACU;
   source: TableMutationSourceV2_ACU;
   reason: string;
   chatKey?: string;
@@ -281,9 +283,21 @@ export async function runTableUpdateCommit_ACU<T>(
         let commitRevisionWriteSet = options.revisionWriteSet;
         return transactionContext.runCommit(async () => {
           assertExpectedCommitScope_ACU(options, 'stage 应用前');
+          const guideBase = workingData || options.initialData || currentJsonTableData_ACU;
+          const originalGuideBase = (options.originalGuideStrategy || originalGuideSheetKey_ACU(guideBase)) ? cloneTableData_ACU(guideBase as TableDataObject_ACU) : null;
           const applied = await apply({ transactionContext, workingData });
           if (!applied.success || !applied.tableData) {
             throw new TableUpdateCommitError_ACU(applied.error || `${options.reason}: stage apply failed`, applied.errorCategory || 'infrastructure');
+          }
+
+          if (originalGuideBase && ['auto_fill', 'manual_fill', 'group_fill'].includes(options.source)) {
+            const policyError = enforceOriginalGuideWrite_ACU(originalGuideBase, applied.tableData, options.originalGuideStrategy);
+            if (policyError) { requiresRuntimeReload = true; throw new TableUpdateCommitError_ACU(policyError, 'model'); }
+            const guideKey = originalGuideSheetKey_ACU(applied.tableData);
+            if (guideKey) {
+              applied.persist = { ...applied.persist, operations: [...(applied.persist?.operations || options.operations || []),
+                { kind: 'sheet_replace', sheetKey: guideKey, sheet: applied.tableData[guideKey] as any, reason: 'system' }] };
+            }
           }
           assertExpectedCommitScope_ACU(options, 'stage 发布前');
           commitRevisionWriteSet = applied.persist?.revisionWriteSet ?? options.revisionWriteSet;
@@ -329,7 +343,7 @@ export async function runTableUpdateCommit_ACU<T>(
     await flushRuntimeOnlyPendingBeforeCommit_ACU(options);
     assertExpectedCommitScope_ACU(options, '未落盘变更写回后');
 
-    return await runTableWriteTransaction_ACU({
+    const committed = await runTableWriteTransaction_ACU({
       source: options.source,
       reason: options.reason,
       chatKey: options.chatKey,
@@ -345,12 +359,24 @@ export async function runTableUpdateCommit_ACU<T>(
         try {
           assertExpectedCommitScope_ACU(options, '应用前');
           requiresRuntimeReload = Boolean(options.signal || options.targetSnapshot);
+          const guideBase = workingData || options.initialData || currentJsonTableData_ACU;
+          const originalGuideBase = (options.originalGuideStrategy || originalGuideSheetKey_ACU(guideBase)) ? cloneTableData_ACU(guideBase as TableDataObject_ACU) : null;
           const applied = await apply({ transactionContext, workingData });
           assertExpectedCommitScope_ACU(options, '应用后');
           if (!applied.success || !applied.tableData) {
             throw new TableUpdateCommitError_ACU(applied.error || `${options.reason}: update apply failed`, applied.errorCategory || 'infrastructure');
           }
 
+
+          if (originalGuideBase && ['auto_fill', 'manual_fill', 'group_fill'].includes(options.source)) {
+            const policyError = enforceOriginalGuideWrite_ACU(originalGuideBase, applied.tableData, options.originalGuideStrategy);
+            if (policyError) { requiresRuntimeReload = true; throw new TableUpdateCommitError_ACU(policyError, 'model'); }
+            const guideKey = originalGuideSheetKey_ACU(applied.tableData);
+            if (guideKey) {
+              applied.persist = { ...applied.persist, operations: [...(applied.persist?.operations || options.operations || []),
+                { kind: 'sheet_replace', sheetKey: guideKey, sheet: applied.tableData[guideKey] as any, reason: 'system' }] };
+            }
+          }
           let saved = true;
           let messageIndex: number | undefined;
           const persistOptions = applied.persist || {};
@@ -419,6 +445,11 @@ export async function runTableUpdateCommit_ACU<T>(
         }
       }, () => commitRevisionWriteSet);
     });
+    if (!options.skipChatSave && originalGuideSheetKey_ACU(committed.tableData || null)) {
+      const reloaded = await reloadStorageProvider();
+      if (!reloaded?.ok) return { success: false, error: '提交已落盘但 SQLite 重载未确认，请保留 requestId 重试', errorCategory: 'infrastructure' };
+    }
+    return committed;
   } catch (error: any) {
     if (requiresRuntimeReload) {
       try {

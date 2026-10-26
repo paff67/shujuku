@@ -44,12 +44,23 @@ vi.mock('../../../src/service/table/table-storage-strategy', () => ({
 import { createTableFillStagingRunContext_ACU } from '../../../src/service/table/table-fill-boundary-staging';
 import { createTableFillStagingSession_ACU } from '../../../src/service/table/table-fill-staging-session';
 import { createDetachedSqlTableService_ACU } from '../../../src/service/table/table-storage-strategy';
+import { data as originalGuideData } from '../../memory/fixture';
 
 describe('TableFillStagingSession', () => {
   beforeEach(() => {
     mocks.chatIdentifier = 'session-chat';
     mocks.isolationKey = '';
     mocks.sqlite = false;
+  });
+
+  it('原著 staging 拒绝改写既有事实并返回可进入原生纠错的 model 分类', async () => {
+    const run = createTableFillStagingRunContext_ACU({ runId: 'guide', chatKey: 'session-chat', isolationKey: '', targetSheetKeys: ['sheet_memory'], originalFullIndex: 100, templateFingerprint: 'guide' });
+    const session = createTableFillStagingSession_ACU(run), before = originalGuideData(), after = structuredClone(before);
+    (after.sheet_memory as any).content[1][3] = 'model changed old fact';
+    const result = await session.applyBucket({ historicalBase: before, saveTargetIndex: 100, updateMode: 'manual_independent', appliedTableData: after });
+    expect(result).toMatchObject({ ok: false, errorCategory: 'model', error: expect.stringContaining('不得修改') });
+    expect(Object.keys(session.getTargetOverlay().sheets)).toEqual([]);
+    await session.discard();
   });
 
   it('连续 bucket 累积目标 overlay，且不把未来非目标数据写入 overlay', async () => {
