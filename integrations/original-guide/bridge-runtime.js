@@ -32,11 +32,10 @@ function installMemoryManager() {
   function originalContext(records,archive){
     const configured=(archive?.metadata||ctx().chatMetadata)?.acu_original_guide_context_v2;
     const rowNodeIds={};for(const row of records){if(!row.nodeId)throw Error('纪要 '+row.code+' 缺少节点来源；请先在迁移参数中提供 nodeId');rowNodeIds[row.stableRowId]=row.nodeId;}
-    if(configured)return {...copy(configured),rowNodeIds};
-    const nodes=new Set(['local','legacy-frozen']);let current='local';
+    const nodes=new Set(configured?configured.allowedNodeIds:['local','legacy-frozen']);let current=configured?.currentNodeId||'local';
     if(!archive||archive.live)for(let i=0;i<ctx().chat.length;i++){const cursor=TavernHelper.getVariables({type:'message',message_id:i})?.canon_cursor;if(cursor?.start){nodes.add(cursor.start);current=cursor.start;}}
-    if(archive&&!archive.live&&records.some(row=>!nodes.has(row.nodeId)))throw Error('此旧档缺少冻结原著节点边界，请先声明 acu_original_guide_context_v2 后升级');
-    return {bookId:archive?.bookId||scope().book,currentNodeId:current,allowedNodeIds:[...nodes],rowNodeIds,rules:'只把候选纪要视为已发生事实。原著游标之外的后续剧情不是本局历史。'};
+    if(!configured&&archive&&!archive.live&&records.some(row=>!nodes.has(row.nodeId)))throw Error('此旧档缺少冻结原著节点边界，请先声明 acu_original_guide_context_v2 后升级');
+    return {...(configured?copy(configured):{bookId:archive?.bookId||scope().book,rules:'只把候选纪要视为已发生事实。原著游标之外的后续剧情不是本局历史。'}),currentNodeId:current,allowedNodeIds:[...nodes],rowNodeIds};
   }
   const api=window.XZ_MEMORY={version:2,read,view,scope,nativeScope,originalContext,settings,bookPrompt,reincarnationOpeningPrompt,reincarnationPolishPrompt,promptLibrary,changePrompts,
     builtinPrompt:kind=>kind==='reincarnationMvu'?copy(reincarnationMvuDefault):kind==='reincarnationPolish'?copy(reincarnationPolishDefault):kind==='reincarnation'?copy(reincarnationDefault):[],
